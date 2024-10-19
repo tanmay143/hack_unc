@@ -5,63 +5,23 @@ import { parseMermaidToExcalidraw } from "@excalidraw/mermaid-to-excalidraw";
 import { convertToExcalidrawElements } from "@excalidraw/excalidraw";
 import dynamic from "next/dynamic";
 import { LucideArrowUpLeftFromSquare } from "lucide-react";
+import { restoreElements } from "@excalidraw/excalidraw";
 
-//function to add element
-// Define the parent element's position and dimensions
-const parent = { id: "parent", x: 100, y: 100, width: 300, height: 300 };
 
-// Existing elements with their positions (coordinates provided separately)
-const existingElements = [
-  { id: "existing1", x: 120, y: 420, width: 50, height: 50 },
-  { id: "existing2", x: 250, y: 450, width: 50, height: 50 },
-  // Add more elements as needed
-];
 
-// New element (Z) dimensions
-const newElement = { width: 50, height: 50 };
 
-// Helper function to calculate if a position overlaps with any other element
-const doesOverlap = (x, y, width, height, elements) => {
-  return elements.some((element) => {
-    return (
-      x < element.x + element.width &&
-      x + width > element.x &&
-      y < element.y + element.height &&
-      y + height > element.y
-    );
-  });
-};
-
-// Function to find the perfect position for a new element below the parent
-const findPerfectPositionBelowParent = (parent, newElement, existingElements) => {
-  // Define a gap between the parent and the new element
-  const gap = 10;
-
-  // Start searching below the parent element
-  let startX = parent.x + (parent.width - newElement.width) / 2; // Center horizontally below the parent
-  let startY = parent.y + parent.height + gap; // Start just below the parent
-
-  // Increment to move down and search for available space
-  const increment = 10;
-
-  while (true) {
-    // Check if the current position overlaps with any existing elements
-    if (!doesOverlap(startX, startY, newElement.width, newElement.height, existingElements)) {
-      // If no overlap, return this position
-      return { x: startX, y: startY };
-    }
-
-    // Move down by the increment
-    startY += increment;
-  }
-};
 
 
 
 const get_mermaid_code=()=>{
   return `
   graph TD
-    K --> E`;
+    K["New Step"] --> G
+    G --> L["Update target to mid value"]
+    L --> M["Check if mid meets condition"]
+    M -->|Yes| N["Perform Operation"]
+    M -->|No| O["Exit Process"]
+`;
 
 };
 
@@ -85,6 +45,7 @@ export default function Component() {
     const data=excalidrawAPI.getSceneElements();
     const id_elements:any={}
     const coordinates:any={}
+    const new_arrows:any=[]
     data.forEach((item)=>{
       id_elements[item.id]=item;
       coordinates[item.id]={
@@ -94,37 +55,210 @@ export default function Component() {
         height:item.height||0,
       }
     });
+
     const new_mermaid=get_mermaid_code();
     const new_mermaid_code=await parseMermaidToExcalidraw(new_mermaid, {
       fontSize: 16,
     });
-    // console.log(new_mermaid_code.elements);
-    new_mermaid_code.elements.forEach((item, index) => {
-      if (item.id in id_elements) {
-        // Update the element directly in the array
-        new_mermaid_code.elements[index] = id_elements[item.id];
+    console.log('initial_mermaid',new_mermaid_code);
+    let new_shapes:any={}
+  
+    const get_vertices = (parent, child, b) => {
+      console.log('got to vertices');
+      // Assuming parent and child are IDs referring to elements in id_elements
+      const PADDING = 100; // Default padding between parent and child
+      const SHIFT = 30;   // The shift to check for available space in DFS
+  
+      const isSpaceFree = (x: number, y: number,width,height) => {
+          // Check if there's free space at (x, y) in coordinates object
+          return !Object.values(coordinates).some(coord => coord.x === x && coord.y === y);
+      };
+  
+      const findFreeSpace = (x: number, y: number,width,height, increment: number) => {
+          let currentx = x;
+          while (!isSpaceFree(currentx, y,width,height)) {
+              currentx += increment;
+          }
+          return currentx;
+      };
+  
+      if (b=='parent') {
+          // console.log('parent to child calculations');
+          // Update coordinates for parent (above child)
+          const childX = coordinates[child].x;
+          const childY = coordinates[child].y;
+
+          const widthC = coordinates[child].width;
+          const heightC = coordinates[child].height;
+          
+          // Set parent's new x, y above the child
+          let parentX = childX;
+          let parentY = childY - PADDING;
+  
+          // Check for available space using DFS-like approach
+          parentX = findFreeSpace(parentX, parentY,widthC,heightC, -SHIFT);
+  
+          // Update the coordinates for parent
+          // console.log('parent coordinates',parent)
+          coordinates[parent] = {
+              x: parentX,
+              y: parentY,
+              width: new_shapes[parent].width || 0,
+              height: new_shapes[parent].height || 0,
+          };
+  
+          // Update new_shapes object for the parent
+          if (new_shapes[parent]) {
+              new_shapes[parent].x = parentX;
+              new_shapes[parent].y = parentY;
+          }
+          if (child in id_elements){
+          new_shapes[child]=id_elements[child];
+          delete id_elements[child];
+          }
+      } else {
+          // Update coordinates for child (below parent)
+          // console.log(coordinates)
+          // console.log('looking for ',parent)
+          const parentX = coordinates[parent].x;
+          const parentY = coordinates[parent].y;
+  
+          // Set child's new x, y below the parent
+          let childX = parentX;
+          let childY = parentY + PADDING;
+  
+          // Check for available space using DFS-like approach
+          childY = findFreeSpace(childX, childY, SHIFT);
+
+          // Update the coordinates for child
+          coordinates[child] = {
+              x: childX,
+              y: childY,
+              width: new_shapes[child].width || 0,
+              height: new_shapes[child].height || 0,
+          };
+  
+          // Update new_shapes object for the child
+          if (new_shapes[child]) {
+              new_shapes[child].x = childX;
+              new_shapes[child].y = childY;
+          }
+  
+          // Remove child entry from new_mermaid_code
+          if (parent in id_elements){
+            new_shapes[parent]=id_elements[parent];
+            delete id_elements[parent];
+            }
+          
       }
-    });
-    console.log(new_mermaid_code.elements)
+      // console.log('updated new_shapes after operation find',new_shapes)
+  };
+
+    const get_edges=(item,index)=>{
+      if(!(item.start.id in coordinates) && !(item.end.id in coordinates)){
+        // console.log('new_shapes before updating coordiantes',new_shapes);
+        let temp=new_shapes[item.start.id]
+        coordinates[temp.id] = {
+          x: temp.x,
+          y: temp.y,
+          width: temp.width || 0,
+          height: temp.height || 0,
+      };
+        temp=new_shapes[item.end.id]
+        coordinates[temp.id] = {
+          x: temp.x,
+          y: temp.y,
+          width: temp.width || 0,
+          height: temp.height || 0,
+      };
+          return;
+
+      }
+      else if(!(item.start.id in coordinates)){
+        // console.log('enter the function for parent');
+        get_vertices(item.start.id,item.end.id,'parent');
+
+      }
+      else if(!(item.end.id in coordinates)){
+        
+        get_vertices(item.start.id,item.end.id,'child');
+      }
+      // console.log('show',coordinates[item.start.id],coordinates[item.end.id])
+      // console.log('calculating distances between centers');
+      let x=coordinates[item.start.id].x
+      let y=coordinates[item.start.id].y
+      let x1=coordinates[item.end.id].x
+      let y1=coordinates[item.end.id].y
+      
+      const width_start=coordinates[item.start.id].width
+      const width_end=coordinates[item.end.id].width
+      const height_start=coordinates[item.start.id].height
+      // console.log(x);
+      // console.log('width_start',width_start)
+      x=x+(width_start/2);
+      y=y+height_start;
+      x1=x1+(width_end/2);
+      const diff=[x1-x,y1-y]
+      new_arrows[index].x=x
+      new_arrows[index].y=y
+      new_arrows[index].points=[[0,0],diff];
+
+      
+
+      
+    }
     
     
-    // console.log('working',new_mermaid_code)
-    const new_excalidrawElements =   convertToExcalidrawElements(new_mermaid_code.elements,{regenerateIds: false});
+    
+    
+    // console.log(new_mermaid_code.elements);
+    new_shapes={}
+
+    for (let index = 0; index <new_mermaid_code.elements.length ; index++) {
+      
+      let item = new_mermaid_code.elements[index];
+      console.log(item);
+      // console.log('intial task item',item);
+
+      if (item.type!='arrow'){
+        // console.log('all elements added to new_shape',item)
+        new_shapes[item.id] = item;
+        // console.log('check again',new_shapes[item.id],item);
+        // console.log(JSON.stringify(new_shapes, null, 2));  // Safely remove without skipping
+      }
+      else{
+        new_arrows.push(item);
+      }
+    }
+    
+    console.log(JSON.stringify(new_arrows));
+    // console.log(new_shapes);
+    for (let index = new_arrows.length - 1; index >= 0; index--) {
+      // console.log('debug',new_shapes);
+      
+      let item = new_arrows[index];
+      
+      get_edges(item, index);
+      
+      
+    }
+    const new_excalidrawElements =   convertToExcalidrawElements(new_arrows.concat(Object.values(new_shapes)),{regenerateIds: false});
     // console.log('2',new_excalidrawElements)
       // console.log(new_excalidrawElements);
-      
+    
     
       // Update the Excalidraw scene with new elements
       const sceneData = {
-        elements: Object.values(id_elements).concat(new_excalidrawElements),
+        elements: new_excalidrawElements.concat(Object.values(id_elements)),
         appState: {
           viewBackgroundColor: "#edf2ff",
         },
       };
-      console.log(sceneData.elements);
+
       // Update the scene in Excalidraw
       if (excalidrawAPI) {
         excalidrawAPI.updateScene(sceneData);
+        excalidrawAPI.refresh();
       }
       
 
