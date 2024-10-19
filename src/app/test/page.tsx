@@ -60,19 +60,35 @@ export default function Component() {
     const new_mermaid_code=await parseMermaidToExcalidraw(new_mermaid, {
       fontSize: 16,
     });
-    console.log('initial_mermaid',new_mermaid_code);
+    // console.log('initial_mermaid',new_mermaid_code);
     let new_shapes:any={}
   
     const get_vertices = (parent, child, b) => {
-      console.log('got to vertices');
+      // console.log('got to vertices');
       // Assuming parent and child are IDs referring to elements in id_elements
       const PADDING = 100; // Default padding between parent and child
-      const SHIFT = 30;   // The shift to check for available space in DFS
+      const SHIFT = 100;   // The shift to check for available space in DFS
   
-      const isSpaceFree = (x: number, y: number,width,height) => {
-          // Check if there's free space at (x, y) in coordinates object
-          return !Object.values(coordinates).some(coord => coord.x === x && coord.y === y);
-      };
+      const isSpaceFree = (x: number, y: number, width: number, height: number) => {
+        // Early return if any coordinate interferes, reducing unnecessary checks
+        for (const coord of Object.values(coordinates)) {
+            const coordX = coord.x;
+            const coordY = coord.y;
+            const coordWidth = coord.width || 0;
+            const coordHeight = coord.height || 0;
+    
+            // Check for interference on x and y axes combined (single condition)
+            if (
+                x < coordX + coordWidth && x + width > coordX &&  // x-axis overlap
+                y < coordY + coordHeight && y + height > coordY   // y-axis overlap
+            ) {
+                return false; // Interference found, return early
+            }
+        }
+        return true; // No interference found
+    };
+    
+    
   
       const findFreeSpace = (x: number, y: number,width,height, increment: number) => {
           let currentx = x;
@@ -217,7 +233,7 @@ export default function Component() {
     for (let index = 0; index <new_mermaid_code.elements.length ; index++) {
       
       let item = new_mermaid_code.elements[index];
-      console.log(item);
+      // console.log(item);
       // console.log('intial task item',item);
 
       if (item.type!='arrow'){
@@ -231,7 +247,8 @@ export default function Component() {
       }
     }
     
-    console.log(JSON.stringify(new_arrows));
+    // console.log(JSON.stringify(new_arrows));
+
     // console.log(new_shapes);
     for (let index = new_arrows.length - 1; index >= 0; index--) {
       // console.log('debug',new_shapes);
@@ -303,10 +320,10 @@ export default function Component() {
       const { elements, files } = await parseMermaidToExcalidraw(diagramDefinition, {
         fontSize: 16,
       });
-      console.log(elements);
+      // console.log(elements);
       // Convert the parsed elements into Excalidraw's format
       const excalidrawElements =   convertToExcalidrawElements(elements,{regenerateIds: false});
-      console.log(excalidrawElements);
+      // console.log(excalidrawElements);
 
       // Update the Excalidraw scene with new elements
       const sceneData = {
